@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMSC 170 Project</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+   <!-- KaTex to render LaTex equations -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body, {delimiters: [{left: '$$', right: '$$', display: true}, {left: '\\(', right: '\\)', display: false}]});"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="header">
+    <div class="container">
+      <p class="tag">CMSC 170: Final Project</p>
+      <h1>Predicting declared value of Philippine imports with neural networks</h1>
+      <p class="subtitle">
+        Training fully-connected neural networks of 1, 2 and 3 hidden layers to predict the value per kilogram of imports, using only product code, country of origin, month, year and quantity.
+      </p>
+      <p class="group">
+        <strong>Members:</strong> <span class="todo">Bucio, Ferrer, Mende, Zerna</span>
+      </p>
+      <div class="buttons">
+        <a class="button button-arrow" href="https://github.com/luckymeonin/CMSC-170-PROJECT">GitHub Repo</a>
+        <a class="button button-arrow" href="https://colab.research.google.com/drive/1gouklh9r9-9yxndvT64RLjpEYbTgj5zp">Google Collab</a>
+      </div>
+
+    </div>
+  </header>
+
+  <nav class="nav">
+    <div class="container nav-links">
+      <a href="#problem">Problem</a>
+      <a href="#dataset">Dataset</a>
+      <a href="#methods">Methods</a>
+      <a href="#setup">Setup</a>
+      <a href="#results">Results</a>
+      <a href="#discussion">Discussion</a>
+      <a href="#conclusion">Conclusion</a>
+      <a href="#references">References</a>
+    </div>
+  </nav>
+
+  <main class="container">
+
+    <section id="problem">
+      <!-- not sure on using the term dutiable -->
+      <h2>Problem</h2>
+      <div class="intro-logo">
+        <img class="logo" src="assets/boc_logo.png" alt="Bureau of Customs logo">
+        <p>
+          Every import entering the Philippines requires a declared customs value, which serves as the primary basis for tax assessment.
+          Imports entering the country are declared to the Bureau of Customs (BoC).
+        </p>
+      </div>
+      <div class="note note-term">
+        <span class="note-label">Terminology</span>
+        <strong class="term">Under-invoicing</strong>
+        A bad practice where importers intentionally under-declare the value of their goods to minimize tax liabilities.
+      </div>
+      <p>
+        Inspecting millions of declarations by hand is laboriously infeasible which leaves room for overlooked misdeclaration and corruption.
+      </p>
+
+      <h3>Project Goal</h3>
+      <p>
+        Given a product's code, country of origin, month, year and quantity, predict its <strong>value per kilogram</strong>. 
+        The declarations far below the prediction could be flagged for review.
+      </p>
+      <div class="note">
+        We predict using the <em>log</em> of the value per kg as prices values span different orders of magnitude.
+      </div>
+    </section>
+
+
+    <section id="dataset">
+      <h2>Dataset</h2>
+      <p>
+        We utilized a public dataset, <a href="https://huggingface.co/datasets/bettergovph/open-customs-data">Open Customs Data</a>
+        from BetterGov.
+      </p>
+
+      <div class="stats">
+        <div class="stat">
+          <p class="stat-number">65M</p>
+          <p class="stat-label">rows in the full dataset</p>
+        </div>
+        <div class="stat">
+          <p class="stat-number">16M</p>
+          <p class="stat-label">rows sampled (2020–2025)</p>
+        </div>
+        <div class="stat">
+          <p class="stat-number">13.8M</p>
+          <p class="stat-label">rows after cleaning</p>
+        </div>
+      </div>
+
+      <h3>Features</h3>
+      <table class="features">
+        <tr><th>Feature</th><th>Description</th><th>Encoding</th><th>Network inputs</th></tr>
+        <tr><td>Product code (HS6)</td><td>6-digit international code for the type of product</td><td>Learned embedding</td><td>32</td></tr>
+        <tr><td>Country of origin</td><td>Source of manufactured goods</td><td>Learned embedding</td><td>8</td></tr>
+        <tr><td>Month</td><td>Month declared (1–12)</td><td>\(\sin(2\pi m/12)\) and \(\cos(2\pi m/12)\)</td><td>2</td></tr>
+        <tr><td>Year</td><td>Year declared (2020–2025)</td><td>Standardized</td><td>1</td></tr>
+        <tr><td>Quantity</td><td>Number of units declared</td><td>\(\ln(1 + \text{quantity})\), then standardized</td><td>1</td></tr>
+        <tr><td>Missing-value flags</td><td>Indicates if quantity unit of measure or preference code was blank</td><td>1 if missing, else 0</td><td>3</td></tr>
+        <tr class="total"><td>Total</td><td></td><td></td><td>47</td></tr>
+      </table>
+      <div class="note note-term">
+        <span class="note-label">Terminology</span>
+        <strong class="term">Harmonized System (HS) codes</strong>
+        Products are coded via the Harmonized System maintained by the World Customs Organization.
+        Philippine customs records add extra digits for finer national categories thus giving 11-digit codes in the dataset.
+        <p>
+          <strong>Lost leading zeros.</strong> Codes found in the dataset that start with 0 are sometimes lost that zero when stored as a number. 
+          Codes are padded every code back to 11 digits before keeping the first 6. About 1.5% of rows in our sample have an HS6 code starting with 0.
+        </p>
+      </div>
+      <p><strong>Target:</strong> the natural log (base \(e\)) of the value per kilogram:</p>
+      <div class="equation">
+        $$y = \ln\left(\frac{\text{value in USD}}{\text{weight in kg}}\right)$$
+      </div>
+
+      <!-- TODO: expand description and layout -->
+      <h3>Preprocessing</h3>
+      <ul>
+        <li>Kept 2020–2025 due to having cleaner, more updated standards in the values of records.</li>
+        <li>Removed rows with zero or negative weight, value or exchange rate, and rows where freight is more than 90% of the declared value.</li>
+        <li>Randomly sampled 16M rows from the remaining 2020–2025 records.</li>
+        <li>Padded HS codes back to 11 digits for those which lost their leading 0’s and kept the first 6 digits
+          (HS6, internationally recognized code for products). Codes with an invalid chapter (first 2 digits
+          outside 01–97) are kept as a separate INVALID category.</li>
+        <li>Kept the 1,000 most common HS6 codes and grouped the rest as RARE (12.3% of rows).</li>
+        <li>Merged currency typos (such as US1–US8) into USD, and grouped obsolete country codes (SU,
+          YU, ZR, YD, BU, CS, AN, NT) as OTHER.</li>
+        <li>Converted all values to USD: foreign value × exchange rate gives pesos, which is then divided by the median PHP-per-USD rate for that month.</li>
+        <li>Split the sample randomly into 70% training, 15% validation, and 15% test</li>
+        <li>Used log (ln) transform for appropriate fields (numerical).</li>
+        <li>Winsorization was employed to remove severe outliers on both tail ends.</li>
+        <li>HS6 codes and other nominal features were index encoded, and later on given random
+          embeddings (final embeddings to be learned by the model)</li>
+      </ul>
+    </section>
+
+    <section id="methods">
+      <h2>Methods</h2>
+      <p>
+        We compare three feed-forward neural networks that differ in the number of hidden layers (1,2,3) of 128 ReLU units each. 
+        Differences in results would be due to the depth of the network.
+      </p>
+
+      <div class="cards">
+        <div class="card card-blue">
+          <h3>1 Hidden Layer</h3>
+          <p>128 neurons</p>
+          <p class="card-small">40,233 parameters</p>
+        </div>
+        <div class="card card-orange">
+          <h3>2 Hidden Layers</h3>
+          <p>128 neurons each</p>
+          <p class="card-small">56,745 parameters</p>
+        </div>
+        <div class="card card-green">
+          <h3>3 Hidden Layers</h3>
+          <p>128 neurons each</p>
+          <p class="card-small">73,257 parameters</p>
+        </div>
+      </div>
+
+      <h3>Network Architecture</h3>
+      <ul>
+        <li><strong>Embeddings:</strong> Product codes and countries map to dense vector representations. Similar products end up with similar numbers.</li>
+        <li><strong>Hidden layers:</strong> Each layer multiplies inputs by weights adds a bias and applies a ReLU activation function. Negative values become zero.</li>
+        <li><strong>Output:</strong>  Single continuous value as the predicted log value per kilogram.</li>
+        <li><strong>Training:</strong>  Utilizes backpropagation with the Adam optimizer. The objective is to minimize mean squared error.</li>
+        <li><strong>Early stopping:</strong> Retain the model state that achieves the lowest validation error.</li>
+      </ul>
+    </section>
+
+    <section id="setup">
+      <h2>Experimental Setup</h2>
+
+      <h3>Data split</h3>
+      <table>
+        <tr><th>Split</th><th>Share</th><th>Rows</th></tr>
+        <tr><td>Train</td><td>70%</td><td>9,644,456</td></tr>
+        <tr><td>Validation</td><td>15%</td><td>2,066,669</td></tr>
+        <tr><td>Test</td><td>15%</td><td>2,066,670</td></tr>
+      </table>
+      <p>All three models follow the split ratio.</p>
+
+      <h3>Evaluation Metrics</h3>
+      <div class="note note-term">
+        <strong class="term">RMSE</strong>
+        Root Mean Squared Error. This metric penalizes larger errors more heavily.
+      </div>
+      <div class="note note-term">
+        <strong class="term">MAE</strong>
+        Mean Absolute Error. This represents the standard average error.
+      </div>
+      <div class="note note-term">
+        <strong class="term">R²</strong>
+        Coefficient of Determination. Represents the proportion of variance explained by the model ranging from 0 to 1.
+      </div>
+      <p>
+        We compare against a <strong>baseline</strong> that predicts the mean value for all instances. 
+      </p>
+
+      <h3>Hyperparameters</h3>
+      <table>
+        <tr><th>Setting</th><th>Value</th></tr>
+        <tr><td>Neurons per layer</td><td>128</td></tr>
+        <tr><td>Learning rate</td><td>0.001 (Adam)</td></tr>
+        <tr><td>Batch size</td><td>256</td></tr>
+        <tr><td>Max epochs</td><td>30</td></tr>
+        <tr><td>Early stopping patience</td><td>5 epochs</td></tr>
+      </table>
+    </section>
+
+    <section id="results">
+      <h2>Results</h2>
+
+      <table>
+        <tr><th>Method</th><th>Val RMSE</th><th>Test RMSE</th><th>Test MAE</th><th>Test R²</th><th>Training time</th></tr>
+        <tr><td><span class="dot dot-gray"></span>Baseline (average)</td><td>2.520</td><td>2.520</td><td>–</td><td>0.000</td><td>–</td></tr>
+        <tr><td><span class="dot dot-blue"></span>1 hidden layer</td><td>1.524</td><td>1.525</td><td>1.104</td><td>0.634</td><td>48 min</td></tr>
+        <tr><td><span class="dot dot-orange"></span>2 hidden layers</td><td>1.514</td><td>1.516</td><td>1.090</td><td>0.638</td><td>85 min</td></tr>
+        <tr class="best"><td><span class="dot dot-green"></span>3 hidden layers</td><td>1.511</td><td>1.513</td><td>1.089</td><td>0.640</td><td>108 min</td></tr>
+      </table>
+      <p class="caption">
+        All errors are in \(\ln(\text{USD/kg})\). Val RMSE is from each model's best epoch (the one kept by early stopping).
+        Validation and test scores are almost identical thus models generalize to unseen data.
+      </p>
+
+      <h3>Test RMSE</h3>
+      <div class="bar-chart">
+        <div class="bar-row">
+          <span class="bar-label">Baseline</span>
+          <div class="bar bar-gray" style="width: 80%;">2.520</div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">1 layer</span>
+          <div class="bar bar-blue" style="width: 48.4%;">1.525</div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">2 layers</span>
+          <div class="bar bar-orange" style="width: 48.1%;">1.516</div>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">3 layers</span>
+          <div class="bar bar-green" style="width: 48%;">1.513</div>
+        </div>
+      </div>
+      <p>All three networks cut the error by about <strong>40%</strong> compared to the baseline.</p>
+
+      <h3>Learning curves</h3>
+      <img src="assets/learning_curves.png" alt="Training and validation error for each model over 30 epochs">
+      <p class="caption"> <strong>No overfitting</strong> as training and validation error stay close together </p>
+
+      <h3>Validation error by depth</h3>
+      <img src="assets/val_curves_by_depth.png" alt="Validation MSE for the 1, 2 and 3 hidden layer models over 30 epochs, with each model's best epoch circled">
+      <p class="caption">
+        Deeper networks reached a lower validation error. The 3-layer model did best although its lead over the 2-layer model is small.
+        Circles mark the epoch each model was saved at (early stopping).
+      </p>
+
+      <h3>Small data vs Big data</h3>
+      <table>
+        <tr><th>Method</th><th>RMSE (145k rows)</th><th>RMSE (9.6M rows)</th></tr>
+        <tr><td><span class="dot dot-blue"></span>1 hidden layer</td><td><strong>1.610</strong></td><td>1.525</td></tr>
+        <tr><td><span class="dot dot-orange"></span>2 hidden layers</td><td>1.613</td><td>1.516</td></tr>
+        <tr><td><span class="dot dot-green"></span>3 hidden layers</td><td>1.614</td><td><strong>1.513</strong></td></tr>
+      </table>
+      <p class="caption">
+        The 1-layer model performed best with limited data. 
+        The 3-layer model achieved superior performance given a larger dataset.
+      </p>
+
+      <h3>What the network learned about products</h3>
+      <img src="assets/hs6_embedding_pca.png" alt="Product embeddings plotted in 2D, colored by price per kg">
+      <p class="caption">
+        Each data point represents a product code. 
+        Expensive products (yellow/green) cluster on the left while inexpensive products (purple) cluster on the right. 
+        The network learned this stratification implicitly without explicit price sorting. 
+      </p>
+    </section>
+
+    <section id="discussion">
+      <h2>Discussion</h2>
+
+      <h3>Baseline Comparison</h3>
+      <p>
+        The type of product explains most of the price. A kilogram of chips costs far more than a kilogram of rice.
+        The embeddings let every network learn a price level for each product.
+      </p>
+
+      <h3>Network Depth's Impact</h3>
+      <p>
+        The problem exhibits lower complexity once products are embedded. 
+        A single layer captures most of the underlying patterns. 
+        Additional layers only provide benefits when sufficient data volume is present. 
+        With 145k rows the deeper models overfit. 
+        With 9.6M rows they possess sufficient examples to learn useful patterns. 
+      </p>
+
+      <h3>Limitations</h3>
+      <ul>
+        <li>We trained each model only once. Minor differences could be attributed to random initialization.</li>
+        <li>The data split was randomized rather than chronological.</li>
+      </ul>
+
+      <h3>Future improvements</h3>
+      <ul>
+        <li>Train each model with several random seeds and average the results.</li>
+        <li>Try different learning rates and layer sizes.</li>
+      </ul>
+    </section>
+
+    <section id="conclusion">
+      <h2>Conclusion</h2>
+      <p>
+        The project successfully developed three neural networks from scratch to predict the unit value of Philippine imports. 
+        All three models reduced prediction error by approximately 40% compared to the mean baseline. 
+        The 3-layer network achieved the best performance (RMSE 1.513) but its improvement is slightly better compared to the 1-layer network given its doubled training time.
+        Deeper architectures only demonstrate significant value when trained on massive datasets. 
+      </p>
+    </section>
+
+
+    <section id="references">
+      <h2>8. References</h2>
+      <ol class="references">
+        <li>BetterGov PH. <em>Open Customs Data</em>. Hugging Face. <a href="https://huggingface.co/datasets/bettergovph/open-customs-data">Link</a></li>
+        <li>Abante, K. (2020). <em>An Open Data Set of Twenty Million Import Transactions from the Bureau of Customs of the Philippines (2012–2019)</em>.
+          <a href="https://doi.org/10.13140/RG.2.2.24053.73444">doi:10.13140/RG.2.2.24053.73444</a></li>
+      </ol>
+
+      <h3>Links</h3>
+      <ul>
+        <li><a href="https://github.com/luckymeonin/CMSC-170-PROJECT">GitHub repository</a></li>
+      </ul>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    <p>CMSC 170 W2L- 1st Semester 2026-2027</p>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
